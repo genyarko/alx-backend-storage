@@ -1,5 +1,2 @@
-// Specify the database name (replace 'my_db' with your desired database name)
-use my_db;
-
 // List all documents in the 'school' collection with name="Holberton school"
 db.school.find({ "name": "Holberton school" });
