@@ -28,27 +28,63 @@ class Cache:
         self._redis.set(key, data)
         return key
 
-def count_calls(method: Callable) -> Callable:
-    """
-    Decorator that counts how many times a method is called.
+    def get(self, key: str, fn: Callable = None) -> Union[str, bytes, int, float]:
+        """
+        Retrieve data from Redis and optionally apply a conversion function.
 
-    Args:
-        method (Callable): The method to be counted.
+        Args:
+            key (str): The key used to retrieve data from Redis.
+            fn (Callable, optional): A callable function to convert the data. Defaults to None.
 
-    Returns:
-        Callable: A wrapped method that increments the count for each call and returns the original method's result.
-    """
-    call_count = 0
+        Returns:
+            Union[str, bytes, int, float]: The retrieved data, possibly converted by the provided function.
+        """
+        data = self._redis.get(key)
+        if data is None:
+            return None
+        if fn is not None:
+            return fn(data)
+        return data
 
-    @wraps(method)
-    def wrapped(self, *args, **kwargs):
-        nonlocal call_count
-        key = method.__qualname__  # Use the qualified name of the method as the Redis key.
-        self._redis.incr(key)
-        call_count += 1
-        return method(self, *args, **kwargs)
+    def get_str(self, key: str) -> str:
+        """
+        Retrieve a string from Redis.
 
-    return wrapped
+        Args:
+            key (str): The key used to retrieve data from Redis.
 
-# Decorate the Cache.store method with the count_calls decorator.
-Cache.store = count_calls(Cache.store)
+        Returns:
+            str: The retrieved string.
+        """
+        return self.get(key, fn=lambda d: d.decode("utf-8"))
+
+    def get_int(self, key: str) -> int:
+        """
+        Retrieve an integer from Redis.
+
+        Args:
+            key (str): The key used to retrieve data from Redis.
+
+        Returns:
+            int: The retrieved integer.
+        """
+        return self.get(key, fn=int)
+
+    @staticmethod
+    def count_calls(method):
+        """
+        Decorator to count how many times a method is called.
+
+        Args:
+            method (Callable): The method to be counted.
+
+        Returns:
+            Callable: A wrapped method that increments the count for the method every time it is called.
+        """
+        @wraps(method)
+        def wrapper(self, *args, **kwargs):
+            key = method.__qualname__
+            count = self._redis.incr(key)
+            result = method(self, *args, **kwargs)
+            return result
+        return wrapper
