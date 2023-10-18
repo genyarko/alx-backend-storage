@@ -1,6 +1,7 @@
 import redis
 import uuid
 from typing import Union, Callable
+from functools import wraps
 
 class Cache:
     """
@@ -13,12 +14,12 @@ class Cache:
         self._redis = redis.Redis()
         self._redis.flushdb()
 
-    def store(self, data: Union[str, bytes, int, float]) -> str:
+    def store(self, data: Union[str, bytes, int, float) = None) -> str:
         """
         Store data in Redis with a randomly generated key.
 
         Args:
-            data (Union[str, bytes, int, float]): The data to be stored.
+            data (Union[str, bytes, int, float], optional): The data to be stored. Defaults to None.
 
         Returns:
             str: The randomly generated key used for storing the data in Redis.
@@ -27,44 +28,27 @@ class Cache:
         self._redis.set(key, data)
         return key
 
-    def get(self, key: str, fn: Callable = None) -> Union[str, bytes, int, float]:
-        """
-        Retrieve data from Redis and optionally apply a conversion function.
+def count_calls(method: Callable) -> Callable:
+    """
+    Decorator that counts how many times a method is called.
 
-        Args:
-            key (str): The key used to retrieve data from Redis.
-            fn (Callable, optional): A callable function to convert the data. Defaults to None.
+    Args:
+        method (Callable): The method to be counted.
 
-        Returns:
-            Union[str, bytes, int, float]: The retrieved data, possibly converted by the provided function.
-        """
-        data = self._redis.get(key)
-        if data is None:
-            return None
-        if fn is not None:
-            return fn(data)
-        return data
+    Returns:
+        Callable: A wrapped method that increments the count for each call and returns the original method's result.
+    """
+    call_count = 0
 
-    def get_str(self, key: str) -> str:
-        """
-        Retrieve a string from Redis.
+    @wraps(method)
+    def wrapped(self, *args, **kwargs):
+        nonlocal call_count
+        key = method.__qualname__  # Use the qualified name of the method as the Redis key.
+        self._redis.incr(key)
+        call_count += 1
+        return method(self, *args, **kwargs)
 
-        Args:
-            key (str): The key used to retrieve data from Redis.
+    return wrapped
 
-        Returns:
-            str: The retrieved string.
-        """
-        return self.get(key, fn=lambda d: d.decode("utf-8"))
-
-    def get_int(self, key: str) -> int:
-        """
-        Retrieve an integer from Redis.
-
-        Args:
-            key (str): The key used to retrieve data from Redis.
-
-        Returns:
-            int: The retrieved integer.
-        """
-        return self.get(key, fn=int)
+# Decorate the Cache.store method with the count_calls decorator.
+Cache.store = count_calls(Cache.store)
